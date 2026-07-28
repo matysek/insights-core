@@ -103,6 +103,7 @@ def marshal(comp, broker, root=None, pool=None):
         except Exception as ex:
             ex_tb = traceback.format_exc()
             exception_func(ex, ex_tb)
+            ex.__traceback__ = None
             return None, ex_tb
 
     def add_broker_exception(comp, broker, ex, ex_tb):

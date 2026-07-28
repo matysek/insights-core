@@ -3,6 +3,10 @@
 ## [Unreleased](https://github.com/RedHatInsights/insights-core/tree/HEAD)
 
 - fix(dr): clear exception tracebacks after run to prevent memory leak from circular references ([PR 4763](https://github.com/RedHatInsights/insights-core/pull/4763))
+- fix(plugins): clear exception tracebacks in plugin invoke() paths to prevent memory leak
+- fix(serde): clear exception tracebacks in marshal/serialize path to prevent memory leak
+- fix(plugins): use self.component instead of component class in parser SkipComponent handler
+- docs: add memory profiling guide with memray
 
 # [insights-core-3.7.2.2](https://github.com/RedHatInsights/insights-core/releases/tag/insights-core-3.7.2.2) (2026-02-05)
 

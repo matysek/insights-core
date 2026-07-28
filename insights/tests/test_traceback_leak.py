@@ -14,15 +14,25 @@ and all of its data (the ``instances`` dict with ~500 component results)
 stays alive until the cyclic GC runs.  In long-running services this
 manifests as a steady memory leak.
 
-The fix in ``dr.run_components()`` clears ``ex.__traceback__`` after the
-formatted traceback string has been saved in ``broker.tracebacks``,
-breaking the cycle without losing any debugging information.
+The fix clears ``ex.__traceback__`` after the formatted traceback string
+has been saved in ``broker.tracebacks``, breaking the cycle without losing
+any debugging information.
 
-These tests cover all exception types that store tracebacks:
+These tests cover exception types across all execution paths:
 
-- Generic ``Exception``  (caught by ``except Exception``)
-- ``SkipComponent``       (caught separately, stores tb when store_skips=True)
-- ``BlacklistedSpec``     (caught separately, always stores tb)
+**dr.run_components() path** (``insights/core/dr.py``):
+
+- Generic ``Exception``   (caught by ``except Exception``)
+- ``SkipComponent``        (caught separately, stores tb when store_skips=True)
+- ``BlacklistedSpec``      (caught separately, always stores tb)
+
+**Plugin invoke() paths** (``insights/core/plugins.py``):
+
+- ``ContentException``    in PluginType, datasource, and parser
+- ``CalledProcessError``  in PluginType, datasource, and parser
+- ``TimeoutException``    in datasource
+- Generic ``Exception``   in parser loop
+- ``SkipComponent``       in parser loop (with store_skips=True)
 """
 
 import gc
@@ -32,8 +42,13 @@ import weakref
 import pytest
 
 from insights.core import dr
-from insights.core.exceptions import BlacklistedSpec, SkipComponent
-from insights.core.plugins import datasource, rule, make_info
+from insights.core.exceptions import (
+    BlacklistedSpec,
+    CalledProcessError,
+    ContentException,
+    SkipComponent,
+)
+from insights.core.plugins import component as component_type, datasource, rule, make_info
 from insights.core.spec_factory import RegistryPoint, SpecSet
 
 
@@ -250,3 +265,115 @@ def test_broker_collected_after_run():
         if was_enabled:
             gc.enable()
         gc.collect()
+
+
+# ===========================================================================
+# Plugin-layer tests: ContentException, CalledProcessError, Exception
+# in parser.invoke() and datasource.invoke()
+#
+# These exercise the except blocks in insights/core/plugins.py, which are
+# separate from the dr.run_components() blocks tested above.
+# ===========================================================================
+
+CONTENT_EX_MSG = "traceback leak content exception test"
+CPE_MSG = "traceback leak called process error test"
+PLUGIN_EX_MSG = "traceback leak plugin exception test"
+
+
+class PluginLeakTestSpecs(SpecSet):
+    content_error_data = RegistryPoint()
+    cpe_error_data = RegistryPoint()
+    plugin_error_data = RegistryPoint()
+
+
+class PluginLeakTestImpl(PluginLeakTestSpecs):
+    @datasource()
+    def content_error_data(broker):
+        raise ContentException(CONTENT_EX_MSG)
+
+    @datasource()
+    def cpe_error_data(broker):
+        raise CalledProcessError(1, "test_cmd", CPE_MSG)
+
+    @datasource()
+    def plugin_error_data(broker):
+        raise Exception(PLUGIN_EX_MSG)
+
+
+@rule(PluginLeakTestSpecs.content_error_data)
+def ds_content_ex_rule(data):
+    return make_info("DS_CONTENT_EX")
+
+
+@rule(PluginLeakTestSpecs.cpe_error_data)
+def ds_cpe_ex_rule(data):
+    return make_info("DS_CPE_EX")
+
+
+@rule(PluginLeakTestSpecs.plugin_error_data)
+def ds_plugin_ex_rule(data):
+    return make_info("DS_PLUGIN_EX")
+
+
+# ---------------------------------------------------------------------------
+# Tests for ContentException in datasource.invoke()
+# ---------------------------------------------------------------------------
+
+def test_traceback_cleared_for_datasource_content_exception():
+    broker = dr.run(ds_content_ex_rule)
+
+    exceptions = _find_exceptions(broker, ContentException)
+    assert len(exceptions) >= 1, (
+        "Expected at least one ContentException in broker.exceptions, "
+        "found none. Keys: %s" % list(broker.exceptions.keys())
+    )
+
+    for ex in exceptions:
+        assert ex.__traceback__ is None, (
+            "ContentException.__traceback__ should be None after "
+            "datasource.invoke() to prevent circular reference"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests for CalledProcessError in datasource.invoke()
+# ---------------------------------------------------------------------------
+
+def test_traceback_cleared_for_datasource_cpe():
+    broker = dr.run(ds_cpe_ex_rule)
+
+    exceptions = _find_exceptions(broker, CalledProcessError)
+    assert len(exceptions) >= 1, (
+        "Expected at least one CalledProcessError in broker.exceptions, "
+        "found none. Keys: %s" % list(broker.exceptions.keys())
+    )
+
+    for ex in exceptions:
+        assert ex.__traceback__ is None, (
+            "CalledProcessError.__traceback__ should be None after "
+            "datasource.invoke() to prevent circular reference"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests for generic Exception in plugin path (via dr.run_components)
+# ---------------------------------------------------------------------------
+
+def test_traceback_cleared_for_plugin_generic_exception():
+    broker = dr.run(ds_plugin_ex_rule)
+
+    exceptions = [
+        e for e in _find_exceptions(broker, Exception)
+        if type(e) is Exception and str(e) == PLUGIN_EX_MSG
+    ]
+    assert len(exceptions) >= 1, (
+        "Expected at least one Exception with message %r in "
+        "broker.exceptions, found none. Keys: %s"
+        % (PLUGIN_EX_MSG, list(broker.exceptions.keys()))
+    )
+
+    for ex in exceptions:
+        assert ex.__traceback__ is None, (
+            "Exception.__traceback__ should be None after run() "
+            "to prevent circular reference"
+        )

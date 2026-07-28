@@ -70,10 +70,12 @@ class PluginType(dr.ComponentType):
         except ContentException as ce:
             log.debug(ce)
             broker.add_exception(self.component, ce, traceback.format_exc())
+            ce.__traceback__ = None
             raise SkipComponent()
         except CalledProcessError as cpe:
             log.debug(cpe)
             broker.add_exception(self.component, cpe, traceback.format_exc())
+            cpe.__traceback__ = None
             raise SkipComponent()
 
 
@@ -115,18 +117,21 @@ class datasource(PluginType):
             ce_tb = traceback.format_exc()
             for reg_spec in dr.get_registry_points(self.component):
                 broker.add_exception(reg_spec, ce, ce_tb)
+            ce.__traceback__ = None
             raise SkipComponent()
         except CalledProcessError as cpe:
             log.debug(cpe)
             cpe_tb = traceback.format_exc()
             for reg_spec in dr.get_registry_points(self.component):
                 broker.add_exception(reg_spec, cpe, cpe_tb)
+            cpe.__traceback__ = None
             raise SkipComponent()
         except TimeoutException as te:
             log.debug(te)
             te_tb = traceback.format_exc()
             for reg_spec in dr.get_registry_points(self.component):
                 broker.add_exception(reg_spec, te, te_tb)
+            te.__traceback__ = None
             raise SkipComponent()
         finally:
             if HostContext in broker:
@@ -167,10 +172,12 @@ class parser(PluginType):
             except ContentException as ce:
                 log.debug(ce)
                 broker.add_exception(self.component, ce, traceback.format_exc())
+                ce.__traceback__ = None
                 exception = True
             except CalledProcessError as cpe:
                 log.debug(cpe)
                 broker.add_exception(self.component, cpe, traceback.format_exc())
+                cpe.__traceback__ = None
                 exception = True
 
         if exception:
@@ -185,18 +192,19 @@ class parser(PluginType):
             except ContentException as ce:
                 log.debug(ce)
                 broker.add_exception(self.component, ce, traceback.format_exc())
+                ce.__traceback__ = None
                 if not self.continue_on_error:
                     exception = True
                     break
             except SkipComponent as sc:
                 if broker.store_skips:
                     log.warning(sc)
-                    broker.add_exception(component, sc, traceback.format_exc())
-                else:
-                    pass
+                    broker.add_exception(self.component, sc, traceback.format_exc())
+                    sc.__traceback__ = None
             except CalledProcessError as cpe:
                 log.debug(cpe)
                 broker.add_exception(self.component, cpe, traceback.format_exc())
+                cpe.__traceback__ = None
                 if not self.continue_on_error:
                     exception = True
                     break
@@ -204,6 +212,7 @@ class parser(PluginType):
                 tb = traceback.format_exc()
                 log.warning(tb)
                 broker.add_exception(self.component, ex, tb)
+                ex.__traceback__ = None
                 if not self.continue_on_error:
                     exception = True
                     break

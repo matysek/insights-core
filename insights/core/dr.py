@@ -1138,28 +1138,24 @@ def run_components(ordered_components, components, broker):
             for x in get_registry_points(component):
                 BLACKLISTED_SPECS.append(str(x).split('.')[-1])
             broker.add_exception(component, bs, _format_exc_short())
-            bs.__traceback__ = None
         except MissingRequirements as mr:
             if log.isEnabledFor(logging.DEBUG):
                 name = get_name(component)
                 reqs = stringify_requirements(mr.requirements)
                 log.debug("%s missing requirements %s" % (name, reqs))
             broker.add_exception(component, mr)
-            mr.__traceback__ = None
         except SkipComponent as sc:
             if broker.store_skips:
                 log.debug(sc)
                 broker.add_exception(component, sc, _format_exc_short())
             else:
                 pass
-            sc.__traceback__ = None
         except Exception as ex:
             log.debug(ex)
             tb = _format_exc_short()
             broker.add_exception(component, ex, tb)
             for reg_spec in get_registry_points(component):
                 broker.add_exception(reg_spec, ex, tb)
-            ex.__traceback__ = None
         finally:
             broker.exec_times[component] = time.time() - start
             broker.fire_observers(component)

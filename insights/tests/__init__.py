@@ -148,6 +148,9 @@ def run_input_data(component, input_data, store_skips=False):
     broker = dr.run(graph, broker=broker)
     for v in broker.tracebacks.values():
         logger.warning(v)
+    for exc_list in broker.exceptions.values():
+        for exc in exc_list:
+            exc.__traceback__ = None
     return broker
 
 

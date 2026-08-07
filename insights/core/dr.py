@@ -952,11 +952,13 @@ class Broker(object):
             for exc in exc_list:
                 exc.__traceback__ = None
         for instance in self.instances.values():
-            if hasattr(instance, 'cleanup') and callable(instance.cleanup):
-                try:
-                    instance.cleanup()
-                except Exception:
-                    pass
+            items = instance if isinstance(instance, list) else (instance,)
+            for item in items:
+                if hasattr(item, 'cleanup') and callable(item.cleanup):
+                    try:
+                        item.cleanup()
+                    except Exception:
+                        pass
         self.instances.clear()
         self.exceptions.clear()
         self.tracebacks.clear()

@@ -106,7 +106,17 @@ class Magic(object):
         """
         Closes the magic database and deallocates any resources used.
         """
-        _close(self._magic_t)
+        if self._magic_t is not None:
+            _close(self._magic_t)
+            self._magic_t = None
+
+    def __del__(self):
+        try:
+            if self._magic_t is not None:
+                _close(self._magic_t)
+        except Exception:
+            pass
+        self._magic_t = None
 
     def file(self, filename):
         """
